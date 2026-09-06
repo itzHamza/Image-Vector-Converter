@@ -7,18 +7,47 @@ transparent background) into a scalable SVG using [VTracer](https://github.com/v
 ## Features
 
 - Simple drag-and-drop web UI (no frontend framework, just HTML/CSS/JS)
-- Adjustable VTracer parameters (color mode, curve style, precision, speckle filtering)
+- Three conversion presets tuned for different source material (see below)
 - Live SVG preview + one-click download
 - JSON API (`/api/convert`) if you want to call it from another service later
 - Ships with a `Dockerfile` ready for Dokploy (or any Docker host)
+
+## Why presets instead of raw VTracer settings
+
+VTracer's default color-tracing mode looks at every distinct RGB value in
+the image. PNGs with a transparent background almost always have
+anti-aliased edges — pixels that blend from full color to fully transparent
+— and each of those blended shades counts as a "different color". On
+something like calligraphy or a wordmark this can produce **thousands of
+tiny, jagged paths** and a multi-megabyte SVG that looks noisy instead of
+clean.
+
+To fix that, this app preprocesses the image before handing it to VTracer:
+
+- **Text / logo — single color** (default): binarizes the alpha channel
+  (a pixel is either "in" or "out", no blend), removes small
+  speckle/holes with morphological opening/closing, traces the clean
+  silhouette in VTracer's `binary` mode, then recolors the result back to
+  the artwork's original dominant color. This is what turned a real-world
+  test case from **9,432 paths / ~2MB** down to **30 paths / ~50KB** with
+  a visually near-identical result.
+- **Logo — multiple flat colors**: same alpha cleanup, plus color
+  quantization down to a small palette (default 8 colors) before tracing
+  in color mode. Use this for logos with a handful of distinct flat
+  colors.
+- **Photo / complex artwork**: skips the cleanup pipeline and passes the
+  image to VTracer close to its raw defaults, with the original manual
+  parameter controls (color mode, curve style, precision, speckle
+  filtering) exposed in the UI. Use this for photos, gradients, or dense
+  illustration where per-pixel color detail actually matters.
 
 ## Project structure
 
 ```
 vectorizer/
-├── app.py              # Flask app + VTracer conversion logic
+├── app.py              # Flask app + preprocessing + VTracer conversion logic
 ├── templates/
-│   └── index.html      # Upload UI
+│   └── index.html      # Upload UI with preset selector
 ├── requirements.txt
 ├── Dockerfile
 └── README.md
@@ -63,9 +92,17 @@ port mapping to match.
 
 Multipart form-data:
 
+| Field    | Type   | Default        | Notes                                                        |
+|----------|--------|----------------|---------------------------------------------------------------|
+| `image`  | file   | —              | PNG / JPG / WEBP / BMP, max 15MB                              |
+| `preset` | string | `logo-single`  | `logo-single`, `logo-multi`, or `photo`                       |
+| `colors` | int    | `8`            | Only used by `logo-multi` — target palette size               |
+
+When `preset=photo`, these additional fields are accepted (same meaning as
+raw VTracer parameters):
+
 | Field              | Type   | Default   | Notes                                      |
 |--------------------|--------|-----------|---------------------------------------------|
-| `image`            | file   | —         | PNG / JPG / WEBP / BMP, max 15MB           |
 | `colormode`        | string | `color`   | `color` or `binary`                        |
 | `mode`             | string | `spline`  | `spline` (smooth), `polygon` (sharp), `none` (pixel) |
 | `color_precision`  | int    | `6`       | Higher = more colors preserved             |
@@ -96,13 +133,14 @@ check config if you want one.
 
 ## Notes on quality / tuning
 
-- For **logos / flat icons**, keep `mode=spline`, low `filter_speckle`
-  (2–4), and moderate `color_precision` (4–6) for the cleanest result.
-- For **photos or complex art**, raise `color_precision` (6–8) and consider
-  `mode=polygon` if you want sharper, more geometric shapes instead of smooth
-  curves.
-- The app converts everything to RGBA PNG internally before tracing, so
-  transparency is preserved correctly regardless of the original file type.
+- For **calligraphy, wordmarks, single-color logos**: use the default
+  "Text / logo — single color" preset. It's specifically built to handle
+  anti-aliased transparent edges cleanly.
+- For **multi-color flat logos**: use "Logo — multiple flat colors" and
+  adjust the color count if colors are getting merged or split incorrectly.
+- For **photos or complex art**: use "Photo / complex artwork" and raise
+  `color_precision` (6–8); consider `mode=polygon` for sharper, more
+  geometric shapes instead of smooth curves.
 
 ## Next steps (optional ideas)
 
