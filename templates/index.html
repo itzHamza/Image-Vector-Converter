@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image → Vector Converter</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2e38;
+    --text: #e6e8eb;
+    --muted: #9aa1ac;
+    --accent: #6c8cff;
+    --accent-hover: #839cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.sub { color: var(--muted); margin-top: 0; margin-bottom: 24px; font-size: 14px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .dropzone.dragover { border-color: var(--accent); background: rgba(108,140,255,.06); }
+  .dropzone p { margin: 6px 0; color: var(--muted); font-size: 14px; }
+  .dropzone strong { color: var(--text); }
+  #fileInput { display: none; }
+
+  .options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .field label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .field select, .field input {
+    width: 100%;
+    background: #0f1115;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  button.primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 16px;
+    width: 100%;
+  }
+  button.primary:hover { background: var(--accent-hover); }
+  button.primary:disabled { opacity: .5; cursor: not-allowed; }
+
+  .preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 20px;
+  }
+  @media (max-width: 640px) {
+    .preview-grid { grid-template-columns: 1fr; }
+  }
+  .preview-box {
+    background: repeating-conic-gradient(#20232b 0% 25%, #1a1d24 0% 50%) 50% / 20px 20px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    min-height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .preview-box img, .preview-box svg { max-width: 100%; max-height: 300px; }
+  .preview-label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 8px;
+  }
+
+  .status { font-size: 13px; color: var(--muted); margin-top: 12px; min-height: 18px; }
+  .status.error { color: #ff6b6b; }
+  .status.ok { color: #5fd888; }
+
+  a.download-btn {
+    display: inline-block;
+    margin-top: 14px;
+    background: #1f2430;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 13px;
+  }
+  a.download-btn:hover { border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Image → Vector (SVG)</h1>
+  <p class="sub">Upload a PNG (transparent background works best) and convert it to a scalable SVG using VTracer.</p>
+
+  <div class="panel">
+    <div class="dropzone" id="dropzone">
+      <p><strong>Click to choose a file</strong> or drag & drop it here</p>
+      <p>PNG, JPG, WEBP, BMP — max 15MB</p>
+      <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp,.bmp">
+    </div>
+
+    <div class="options">
+      <div class="field">
+        <label for="colormode">Color mode</label>
+        <select id="colormode">
+          <option value="color">Color</option>
+          <option value="binary">Black & white</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="mode">Curve mode</label>
+        <select id="mode">
+          <option value="spline">Smooth (spline)</option>
+          <option value="polygon">Sharp (polygon)</option>
+          <option value="none">Pixel (none)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="color_precision">Color precision</label>
+        <input type="number" id="color_precision" value="6" min="1" max="8">
+      </div>
+      <div class="field">
+        <label for="filter_speckle">Filter speckle</label>
+        <input type="number" id="filter_speckle" value="4" min="0" max="16">
+      </div>
+      <div class="field">
+        <label for="corner_threshold">Corner threshold</label>
+        <input type="number" id="corner_threshold" value="60" min="0" max="180">
+      </div>
+      <div class="field">
+        <label for="path_precision">Path precision</label>
+        <input type="number" id="path_precision" value="8" min="1" max="10">
+      </div>
+    </div>
+
+    <button class="primary" id="convertBtn" disabled>Convert to SVG</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="preview-grid" id="previewGrid" style="display:none;">
+    <div class="preview-box">
+      <div>
+        <div class="preview-label">Original</div>
+        <img id="originalPreview" alt="Original image preview">
+      </div>
+    </div>
+    <div class="preview-box">
+      <div style="width:100%;">
+        <div class="preview-label">SVG result</div>
+        <div id="svgPreview"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="downloadWrap"></div>
+</div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const convertBtn = document.getElementById('convertBtn');
+const statusEl = document.getElementById('status');
+const previewGrid = document.getElementById('previewGrid');
+const originalPreview = document.getElementById('originalPreview');
+const svgPreview = document.getElementById('svgPreview');
+const downloadWrap = document.getElementById('downloadWrap');
+
+let selectedFile = null;
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) handleFile(fileInput.files[0]);
+});
+
+function handleFile(file) {
+  selectedFile = file;
+  convertBtn.disabled = false;
+  statusEl.textContent = `Selected: ${file.name}`;
+  statusEl.className = 'status';
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    originalPreview.src = e.target.result;
+    previewGrid.style.display = 'grid';
+    svgPreview.innerHTML = '<span style="color:#9aa1ac;font-size:13px;">Not converted yet</span>';
+    downloadWrap.innerHTML = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+convertBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+
+  convertBtn.disabled = true;
+  statusEl.textContent = 'Converting…';
+  statusEl.className = 'status';
+
+  const formData = new FormData();
+  formData.append('image', selectedFile);
+  formData.append('colormode', document.getElementById('colormode').value);
+  formData.append('mode', document.getElementById('mode').value);
+  formData.append('color_precision', document.getElementById('color_precision').value);
+  formData.append('filter_speckle', document.getElementById('filter_speckle').value);
+  formData.append('corner_threshold', document.getElementById('corner_threshold').value);
+  formData.append('path_precision', document.getElementById('path_precision').value);
+
+  try {
+    const res = await fetch('/api/convert', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!res.ok) {
+      statusEl.textContent = data.error || 'Conversion failed';
+      statusEl.className = 'status error';
+      convertBtn.disabled = false;
+      return;
+    }
+
+    svgPreview.innerHTML = data.svg;
+    statusEl.textContent = 'Done';
+    statusEl.className = 'status ok';
+
+    downloadWrap.innerHTML = `<a class="download-btn" href="${data.download_url}" download>Download SVG</a>`;
+  } catch (err) {
+    statusEl.textContent = 'Network error: ' + err.message;
+    statusEl.className = 'status error';
+  } finally {
+    convertBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
+
+
+
+
+
+
