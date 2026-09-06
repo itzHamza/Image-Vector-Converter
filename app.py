@@ -98,15 +98,19 @@ def preprocess_logo_multi_color(img: Image.Image, n_colors: int = 8) -> Image.Im
     silhouette is crisp), then quantizes the opaque colors down to a small
     palette to avoid anti-aliasing gradient explosion, and flattens onto
     white so VTracer's color mode has a clean image to trace.
+
+    n_colors is clamped to [2, 256]: PIL's palette-based quantize() can't
+    address more than 256 colors (an 8-bit palette), so anything above
+    that raises "bad number of colors" — we clamp instead of failing.
     """
+    n_colors = max(2, min(256, n_colors))
+
     arr = np.array(img.convert("RGBA"))
     alpha = arr[:, :, 3]
     mask = clean_mask(alpha)
 
     rgb = arr[:, :, :3].copy()
-    # Quantize colors (only meaningful within the opaque region, but
-    # quantizing globally is fine since background becomes white anyway)
-    quant_img = Image.fromarray(rgb, "RGB").quantize(colors=max(2, n_colors), method=Image.MEDIANCUT).convert("RGB")
+    quant_img = Image.fromarray(rgb, "RGB").quantize(colors=n_colors, method=Image.MEDIANCUT).convert("RGB")
     quant_arr = np.array(quant_img)
 
     flat = np.full_like(rgb, 255)
@@ -191,7 +195,7 @@ def convert():
             flat_img.save(traced_path, "PNG")
             vtracer_params = dict(
                 colormode="color", hierarchical="stacked", mode="spline",
-                filter_speckle=10, color_precision=5, layer_difference=16,
+                filter_speckle=8, color_precision=8, layer_difference=8,
                 corner_threshold=60, length_threshold=4.0, max_iterations=10,
                 splice_threshold=45, path_precision=6,
             )
